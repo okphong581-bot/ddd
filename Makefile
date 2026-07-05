@@ -7,7 +7,7 @@ BUNDLE_ID = hoangha.app
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = HoangHaAimbot
-HoangHaAimbot_FILES = Tweak.xm \
+HoangHaAimbot_FILES = app/Tweak.xm \
     app/AOTFloatingMenu.m \
     app/AOTBoneManager.m \
     app/AOTRenderer.m \
