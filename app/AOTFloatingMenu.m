@@ -82,7 +82,6 @@
 
 - (void)handleLongPress:(UILongPressGestureRecognizer *)gesture {
     if (gesture.state == UIGestureRecognizerStateBegan) {
-        CGPoint point = [gesture locationInView:renderer];
         // find nearest bone and pin
         [self pinBone:nil atIndex:0];
     }
