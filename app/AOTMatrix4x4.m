@@ -11,9 +11,9 @@
     return mat;
 }
 
-+ (AOTMatrix4x4)getViewProjectionMatrix {
++ (AOTMatrix4x4 *)getViewProjectionMatrix {
     // mock matrix - real impl would read from game memory
-    AOTMatrix4x4 mat = *[AOTMatrix4x4 identity];
+    AOTMatrix4x4 *mat = [AOTMatrix4x4 identity];
     return mat;
 }
 

@@ -1,3 +1,4 @@
+#import <UIKit/UIKit.h>
 #import "AOTBoneManager.h"
 #import "AOTMemoryManager.h"
 #import "AOTMatrix4x4.h"
@@ -36,7 +37,7 @@
 }
 
 - (CGPoint)worldToScreen:(AOTVector3)worldPos {
-    AOTMatrix4x4 viewProj = [AOTMatrix4x4 getViewProjectionMatrix];
+    AOTMatrix4x4 *viewProj = [AOTMatrix4x4 getViewProjectionMatrix];
     AOTVector3 screen = [viewProj multiplyVector:worldPos];
     CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
