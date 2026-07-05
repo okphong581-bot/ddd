@@ -1,14 +1,11 @@
 ARCHS = arm64 arm64e
 TARGET = iphone:clang:latest:14.0
 PACKAGE_VERSION = 1.0
-PACKAGE_NAME = hoangha_aimbot
-BUNDLE_ID = hoangha.app
 
 include $(THEOS)/makefiles/common.mk
 
-APPLICATION_NAME = HoangHaAimbot
-HoangHaAimbot_FILES = app/main.m \
-    app/AppDelegate.m \
+TWEAK_NAME = HoangHaAimbot
+HoangHaAimbot_FILES = app/Tweak.xm \
     app/AOTFloatingMenu.m \
     app/AOTBoneManager.m \
     app/AOTRenderer.m \
@@ -18,12 +15,10 @@ HoangHaAimbot_FILES = app/main.m \
     app/AOTPlayerStructure.m \
     app/AOTSettingsManager.m
 
-HoangHaAimbot_FRAMEWORKS = UIKit CoreGraphics QuartzCore AVFoundation
-HoangHaAimbot_LDFLAGS = -lobjc -framework Foundation
+HoangHaAimbot_FRAMEWORKS = UIKit CoreGraphics QuartzCore
 HoangHaAimbot_CFLAGS = -fobjc-arc
-HoangHaAimbot_CODESIGN_FLAGS = -Sentitlements.plist
 
-include $(THEOS_MAKE_PATH)/application.mk
+include $(THEOS_MAKE_PATH)/tweak.mk
 
 after-install::
-	install.exec "killall -9 SpringBoard"
+	install.exec "killall -9 com.dts.freefireth"

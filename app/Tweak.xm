@@ -1,0 +1,42 @@
+#import <UIKit/UIKit.h>
+#import "AOTFloatingMenu.h"
+
+static AOTFloatingMenu *floatingMenu = nil;
+
+%hook UIApplication
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    BOOL ret = %orig;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (!floatingMenu) {
+            floatingMenu = [[AOTFloatingMenu alloc] initWithFrame:[UIScreen mainScreen].bounds];
+            floatingMenu.userInteractionEnabled = YES;
+            floatingMenu.backgroundColor = [UIColor clearColor];
+            floatingMenu.layer.zPosition = 99999;
+
+            UIWindow *keyWindow = nil;
+            if (@available(iOS 13.0, *)) {
+                for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                    if (scene.activationState == UISceneActivationStateForegroundActive) {
+                        for (UIWindow *window in scene.windows) {
+                            if (window.isKeyWindow) { keyWindow = window; break; }
+                        }
+                        break;
+                    }
+                }
+            }
+            if (!keyWindow) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                keyWindow = [UIApplication sharedApplication].keyWindow;
+#pragma clang diagnostic pop
+            }
+            if (keyWindow) {
+                [keyWindow addSubview:floatingMenu];
+            }
+        }
+    });
+    return ret;
+}
+
+%end
