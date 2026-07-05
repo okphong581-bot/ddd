@@ -342,15 +342,23 @@
 // ─── CADisplayLink update ────────────────────────────────────
 - (void)updateOverlay {
     AOTMemoryManager *mem = [AOTMemoryManager sharedManager];
+
+    // Tweak is injected INTO Free Fire - tryAttachToGame just sets baseAddress
+    // from our own dyld image list. Call it each tick in case it wasn't init yet.
+    if (![mem isGameRunning]) {
+        [mem tryAttachToGame];
+    }
+
     if ([mem isGameRunning]) {
         [boneManager updateBonePositions];
         renderer.bonePoints = boneManager.bonePositions;
-        _statusLbl.text = @"🟢 Connected to Free Fire";
+        _statusLbl.text = [NSString stringWithFormat:@"🟢 Base: 0x%llX",
+                           (unsigned long long)[mem baseAddress]];
         _statusLbl.textColor = [UIColor colorWithRed:0.30 green:0.90 blue:0.50 alpha:1];
     } else {
         renderer.bonePoints = nil;
-        _statusLbl.text = @"🔴 Game not detected";
-        _statusLbl.textColor = [UIColor colorWithWhite:0.55 alpha:1];
+        _statusLbl.text = @"⚠️ Init...";
+        _statusLbl.textColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.0 alpha:1];
     }
     [renderer setNeedsDisplay];
 }
