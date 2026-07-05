@@ -459,7 +459,7 @@
         [boneManager setPinnedBoneIndex:idx];
         NSString *name = [AOTBoneManager boneNameAtIndex:idx];
         _pinnedLbl.text = [NSString stringWithFormat:@"📌 Pinned: %@", name];
-        renderer.selectedBone = (NSUInteger)idx;
+        renderer.selectedBone = idx;
     }
     [tv reloadData];
 }
