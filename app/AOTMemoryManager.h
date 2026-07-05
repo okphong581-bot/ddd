@@ -9,4 +9,9 @@
 - (void)setBaseAddress:(uint64_t)base;
 - (BOOL)isGameRunning;
 
+- (BOOL)tryAttachToGame;
+- (void)detachFromGame;
+- (uint64_t)baseAddress;
+- (mach_port_t)taskPort;
+
 @end

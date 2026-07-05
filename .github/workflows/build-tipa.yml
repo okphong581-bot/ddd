@@ -27,15 +27,16 @@ jobs:
       run: |
         mkdir -p payload
         dpkg-deb -x packages/*.deb payload/
-        cd payload
-        find . -name "*.dylib" -exec cp {} ../HoangHaAimbot.dylib \;
-        cd ..
-        mkdir -p Payload/HoangHaAimbot.app
-        cp HoangHaAimbot.dylib Payload/HoangHaAimbot.app/HoangHaAimbot
-        cp HoangHaAimbot.dylib Payload/HoangHaAimbot.app/
-        echo "APPL" > Payload/HoangHaAimbot.app/PkgInfo
-        cp app/Info.plist Payload/HoangHaAimbot.app/
-        zip -r HoangHaAimbot.tipa Payload
+        APP_PATH=$(find payload -name "*.app" -type d | head -1)
+        echo "Found App at: $APP_PATH"
+        if [ -n "$APP_PATH" ]; then
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r HoangHaAimbot.tipa Payload
+        else
+          echo "Error: No .app found inside the package"
+          exit 1
+        fi
 
     - name: Upload TIPA artifact
       uses: actions/upload-artifact@v4

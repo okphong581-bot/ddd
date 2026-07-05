@@ -6,8 +6,9 @@ BUNDLE_ID = hoangha.app
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = HoangHaAimbot
-HoangHaAimbot_FILES = app/Tweak.xm \
+APPLICATION_NAME = HoangHaAimbot
+HoangHaAimbot_FILES = app/main.m \
+    app/AppDelegate.m \
     app/AOTFloatingMenu.m \
     app/AOTBoneManager.m \
     app/AOTRenderer.m \
@@ -17,11 +18,12 @@ HoangHaAimbot_FILES = app/Tweak.xm \
     app/AOTPlayerStructure.m \
     app/AOTSettingsManager.m
 
-HoangHaAimbot_FRAMEWORKS = UIKit CoreGraphics QuartzCore
+HoangHaAimbot_FRAMEWORKS = UIKit CoreGraphics QuartzCore AVFoundation
 HoangHaAimbot_LDFLAGS = -lobjc -framework Foundation
 HoangHaAimbot_CFLAGS = -fobjc-arc
+HoangHaAimbot_CODESIGN_FLAGS = -Sentitlements.plist
 
-include $(THEOS_MAKE_PATH)/tweak.mk
+include $(THEOS_MAKE_PATH)/application.mk
 
 after-install::
 	install.exec "killall -9 SpringBoard"
