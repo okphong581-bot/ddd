@@ -66,6 +66,15 @@
     return self;
 }
 
+// ─── Touch pass-through ──────────────────────────────────────
+// Only consume touches that land on the gear icon OR the open panel.
+// Everything else passes through to the game underneath.
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    if (!_iconBtn.hidden && CGRectContainsPoint(_iconBtn.frame, point)) return YES;
+    if (!_panel.hidden  && CGRectContainsPoint(_panel.frame,   point)) return YES;
+    return NO;
+}
+
 // ─── Build UI ────────────────────────────────────────────────
 - (void)setupUI {
 
