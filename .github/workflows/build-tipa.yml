@@ -13,6 +13,7 @@ jobs:
 
     - name: Install Theos
       run: |
+        brew install ldid
         sudo git clone --recursive https://github.com/theos/theos.git /opt/theos
         echo "THEOS=/opt/theos" >> $GITHUB_ENV
         echo "/opt/theos/bin" >> $GITHUB_PATH
