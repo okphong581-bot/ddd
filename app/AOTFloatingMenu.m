@@ -1,6 +1,7 @@
 #import "AOTFloatingMenu.h"
 #import "AOTSettingsManager.h"
 #import "AOTMemoryManager.h"
+#import "AOTBoneManager.h"
 
 // ─── Constants ───────────────────────────────────────────────
 #define kIconSize     56.0
@@ -29,6 +30,8 @@
     UIButton        *_blueBtn;
     UIButton        *_yellowBtn;
     UILabel         *_statusLbl;
+    UITableView     *_boneTV;        // bone selection list
+    UILabel         *_pinnedLbl;     // shows which bone is pinned
 }
 @end
 
@@ -213,11 +216,35 @@
     y += 12;
 
     /* ── Status label ── */
-    _statusLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, y, pw - 32, 28)];
-    _statusLbl.text = @"🔴 Game not detected";
+    _statusLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, y, pw - 32, 24)];
+    _statusLbl.text = @"⚙️ Init...";
     _statusLbl.textColor = [UIColor colorWithWhite:0.55 alpha:1];
-    _statusLbl.font = [UIFont systemFontOfSize:12];
+    _statusLbl.font = [UIFont systemFontOfSize:11];
     [_panel addSubview:_statusLbl];
+    y += 28;
+
+    /* ── Pinned bone label ── */
+    _pinnedLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, y, pw - 32, 20)];
+    _pinnedLbl.text = @"📌 Pinned: Head";
+    _pinnedLbl.textColor = [UIColor colorWithRed:1.0 green:0.9 blue:0.0 alpha:1];
+    _pinnedLbl.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+    [_panel addSubview:_pinnedLbl];
+    y += 26;
+
+    /* ── Bone list table ── */
+    _boneTV = [[UITableView alloc] initWithFrame:CGRectMake(16, y, pw - 32, 160)];
+    _boneTV.backgroundColor = [UIColor colorWithWhite:0 alpha:0.4];
+    _boneTV.layer.cornerRadius = 8;
+    _boneTV.separatorColor = [UIColor colorWithWhite:1 alpha:0.06];
+    _boneTV.delegate   = (id)self;
+    _boneTV.dataSource = (id)self;
+    [_panel addSubview:_boneTV];
+    y += 168;
+
+    // Resize panel to fit
+    CGRect pf = _panel.frame;
+    pf.size.height = y + 12;
+    _panel.frame = pf;
 
     /* Drag panel */
     UIPanGestureRecognizer *panelDrag = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(dragPanel:)];
@@ -339,12 +366,11 @@
     b.transform = CGAffineTransformMakeScale(1.15, 1.15);
 }
 
+
 // ─── CADisplayLink update ────────────────────────────────────
 - (void)updateOverlay {
     AOTMemoryManager *mem = [AOTMemoryManager sharedManager];
 
-    // Tweak is injected INTO Free Fire - tryAttachToGame just sets baseAddress
-    // from our own dyld image list. Call it each tick in case it wasn't init yet.
     if (![mem isGameRunning]) {
         [mem tryAttachToGame];
     }
@@ -352,26 +378,94 @@
     if ([mem isGameRunning]) {
         [boneManager updateBonePositions];
         renderer.bonePoints = boneManager.bonePositions;
-        _statusLbl.text = [NSString stringWithFormat:@"🟢 Base: 0x%llX",
-                           (unsigned long long)[mem baseAddress]];
+
+        _statusLbl.text = [NSString stringWithFormat:@"🟢 lp: 0x%llX",
+                           (unsigned long long)[mem localPlayer]];
         _statusLbl.textColor = [UIColor colorWithRed:0.30 green:0.90 blue:0.50 alpha:1];
+
+        // ── Aimbot: write aim direction to localPlayer ──────────
+        AOTSettingsManager *s = [AOTSettingsManager sharedManager];
+        if (s.aimbotEnabled && [boneManager pinnedBoneIndex] >= 0) {
+            AOTVector3 target = [boneManager pinnedBoneWorldPosition];
+            // localPlayer world pos
+            AOTVector3 myPos = [mem readVector3AtOffset:0x78];
+
+            float dx = target.x - myPos.x;
+            float dy = target.y - myPos.y;
+            float dz = target.z - myPos.z;
+            float len = sqrtf(dx*dx + dy*dy + dz*dz);
+            if (len > 0.001f) {
+                dx /= len; dy /= len; dz /= len;
+                uint64_t lp = [mem localPlayer];
+                [mem writeFloat:dx atAddress:lp + 0x4A0];
+                [mem writeFloat:dy atAddress:lp + 0x4A4];
+                [mem writeFloat:dz atAddress:lp + 0x4A8];
+                [mem writeInt32:1  atAddress:lp + 0x48C]; // silentShoot = ON
+            }
+        } else if (![AOTSettingsManager sharedManager].aimbotEnabled) {
+            // Release aim lock when aimbot off
+            uint64_t lp = [mem localPlayer];
+            if (lp) [mem writeInt32:0 atAddress:lp + 0x48C];
+        }
     } else {
         renderer.bonePoints = nil;
-        _statusLbl.text = @"⚠️ Init...";
+        _statusLbl.text = @"⚠️ Scanning...";
         _statusLbl.textColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.0 alpha:1];
     }
     [renderer setNeedsDisplay];
 }
 
-// ─── Unused stubs (keep protocol conformance) ─────────────────
+// ─── Protocol stubs ───────────────────────────────────────────
 - (void)renderSkeletonInContext:(CGContextRef)ctx { [renderer drawBonesInContext:ctx]; }
 - (void)handleTapOnBoneAtPoint:(CGPoint)point {}
 - (void)pinBone:(AOTBone *)bone atIndex:(NSUInteger)index {}
 
-// ─── UITableViewDataSource (boneTableView – keep if used elsewhere) ────────
-- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return 0; }
+// ─── UITableViewDataSource – bone list ───────────────────────
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
+    return [AOTBoneManager boneCount];
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
-    return [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"c"];
+    static NSString *cid = @"BoneCell";
+    UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:cid];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cid];
+        cell.backgroundColor = [UIColor clearColor];
+        cell.textLabel.textColor = [UIColor colorWithWhite:0.88 alpha:1];
+        cell.textLabel.font = [UIFont systemFontOfSize:13];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    }
+    NSInteger idx = ip.row;
+    NSString *name = [AOTBoneManager boneNameAtIndex:idx];
+    BOOL isPinned = ([boneManager pinnedBoneIndex] == idx);
+    cell.textLabel.text = isPinned
+        ? [NSString stringWithFormat:@"📌 %@  ← PINNED", name]
+        : name;
+    cell.textLabel.textColor = isPinned
+        ? [UIColor colorWithRed:1 green:0.9 blue:0 alpha:1]
+        : [UIColor colorWithWhite:0.88 alpha:1];
+    return cell;
+}
+
+// ─── UITableViewDelegate – tap to pin bone ───────────────────
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
+    NSInteger idx = ip.row;
+    if ([boneManager pinnedBoneIndex] == idx) {
+        // Tap again to unpin
+        [boneManager setPinnedBoneIndex:-1];
+        _pinnedLbl.text = @"📌 Pinned: none";
+        renderer.selectedBone = -1;
+    } else {
+        [boneManager setPinnedBoneIndex:idx];
+        NSString *name = [AOTBoneManager boneNameAtIndex:idx];
+        _pinnedLbl.text = [NSString stringWithFormat:@"📌 Pinned: %@", name];
+        renderer.selectedBone = (NSUInteger)idx;
+    }
+    [tv reloadData];
+}
+
+- (CGFloat)tableView:(UITableView *)tv heightForRowAtIndexPath:(NSIndexPath *)ip {
+    return 32;
 }
 
 @end

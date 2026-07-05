@@ -2,75 +2,39 @@
 #import <mach-o/dyld.h>
 #import <mach/mach.h>
 #import <string.h>
+#import <stdlib.h>
 
-// ─── Find base address of the main executable in the CURRENT process ─────────
-// Since the tweak is injected by Substrate INTO Free Fire, we are already
-// running inside the game process. We just walk our own dyld image list.
-static uint64_t find_own_base_address(void) {
+// ─── Offsets (from AutoScanner.c in FFESP) ───────────────────────────────────
+// Chain: il2cppBase + INIT_BASE_OFF → [+SC_OFF] → [+MATCH_OFF] → [+LP_OFF] = localPlayer
+#define INIT_BASE_OFF  0xA986B7CUL   // il2cpp offset to InitBase pointer
+#define SC_OFF         0x5C          // InitBase → StaticClass
+#define MATCH_OFF      0x50          // StaticClass → CurrentMatch
+#define LP_OFF         0x94          // CurrentMatch → LocalPlayer
+
+// Bone offsets are relative to localPlayer
+// World position of player: localPlayer + 0x78
+#define PLAYER_POS_OFF 0x78
+
+// ─── Find il2cpp base from dyld image list ───────────────────────────────────
+static uint64_t find_il2cpp_base(void) {
     uint32_t count = _dyld_image_count();
+    uint64_t mainBase = 0;
     for (uint32_t i = 0; i < count; i++) {
         const char *name = _dyld_get_image_name(i);
-        if (!name) continue;
-        // The main executable will contain "freefire", "ffios" or similar.
-        // If none match, fall back to image index 0 (always the main exe).
-        if (i == 0 ||
-            strcasestr(name, "freefire") != NULL ||
-            strcasestr(name, "ffios")    != NULL) {
-            intptr_t slide = _dyld_get_image_vmaddr_slide(i);
-            // The load address = slide (ASLR offset) + compile-time text base.
-            // For the main binary this equals the actual load address directly.
-            const struct mach_header *mh = _dyld_get_image_header(i);
-            return (uint64_t)(uintptr_t)mh + (uint64_t)(uintptr_t)slide;
+        if (i == 0) {
+            mainBase = (uint64_t)(uintptr_t)_dyld_get_image_header(i);
+        }
+        if (name && (strcasestr(name, "libil2cpp") != NULL)) {
+            return (uint64_t)(uintptr_t)_dyld_get_image_header(i);
         }
     }
-    // Absolute fallback – just return the slide of image 0
-    return (uint64_t)(uintptr_t)_dyld_get_image_header(0);
+    // If no separate il2cpp dylib, game is monolithic - use main binary
+    return mainBase;
 }
 
-@implementation AOTMemoryManager {
-    uint64_t    _baseAddress;
-    mach_port_t _task;
-}
-
-+ (instancetype)sharedManager {
-    static AOTMemoryManager *inst = nil;
-    static dispatch_once_t t;
-    dispatch_once(&t, ^{
-        inst = [[AOTMemoryManager alloc] init];
-        // We are already inside the game process – use mach_task_self()
-        inst->_task        = mach_task_self();
-        inst->_baseAddress = find_own_base_address();
-    });
-    return inst;
-}
-
-// ─── Attach (no-op for injected tweak – always attached) ─────────────────────
-- (BOOL)tryAttachToGame {
-    if (_baseAddress == 0) {
-        _baseAddress = find_own_base_address();
-    }
-    return _baseAddress != 0;
-}
-
-- (void)detachFromGame {
-    // Never detach – we live inside the game process.
-    // Only reset base if explicitly needed.
-}
-
-// ─── isGameRunning: since we are injected, always YES ────────────────────────
-- (BOOL)isGameRunning {
-    return _baseAddress != 0;
-}
-
-// ─── Accessors ───────────────────────────────────────────────────────────────
-- (uint64_t)baseAddress    { return _baseAddress; }
-- (mach_port_t)taskPort    { return _task; }
-- (void)setBaseAddress:(uint64_t)base { _baseAddress = base; }
-
-// ─── Low-level read helper ───────────────────────────────────────────────────
-- (BOOL)_read:(uint64_t)addr into:(void *)buf size:(size_t)size {
-    if (addr == 0) return NO;
-    // Inside the same process – just memcpy directly (no vm_read needed)
+// ─── Safe in-process memcpy with guard ───────────────────────────────────────
+static BOOL safe_read(uint64_t addr, void *buf, size_t size) {
+    if (addr < 0x100000000ULL || addr > 0x800000000ULL) return NO;
     @try {
         memcpy(buf, (const void *)(uintptr_t)addr, size);
         return YES;
@@ -79,39 +43,121 @@ static uint64_t find_own_base_address(void) {
     }
 }
 
-// ─── AOTVector3 ──────────────────────────────────────────────────────────────
+static uint64_t read_ptr(uint64_t addr) {
+    uint64_t v = 0;
+    safe_read(addr, &v, sizeof(v));
+    return v;
+}
+
+@implementation AOTMemoryManager {
+    uint64_t    _baseAddress;      // il2cpp / main binary base
+    uint64_t    _localPlayer;      // pointer to LocalPlayer object
+    mach_port_t _task;
+}
+
++ (instancetype)sharedManager {
+    static AOTMemoryManager *inst = nil;
+    static dispatch_once_t t;
+    dispatch_once(&t, ^{
+        inst = [[AOTMemoryManager alloc] init];
+        inst->_task        = mach_task_self();
+        inst->_baseAddress = 0;
+        inst->_localPlayer = 0;
+    });
+    return inst;
+}
+
+// ─── Attach: walk pointer chain to find localPlayer ──────────────────────────
+- (BOOL)tryAttachToGame {
+    if (_baseAddress == 0) {
+        _baseAddress = find_il2cpp_base();
+    }
+    if (_baseAddress == 0) return NO;
+
+    // Walk: base + INIT_BASE_OFF → initPtr
+    uint64_t initPtr = read_ptr(_baseAddress + INIT_BASE_OFF);
+    if (initPtr < 0x100000000ULL) { _localPlayer = 0; return NO; }
+
+    // initPtr + SC_OFF → staticClass
+    uint64_t sc = read_ptr(initPtr + SC_OFF);
+    if (sc < 0x100000000ULL) { _localPlayer = 0; return NO; }
+
+    // staticClass + MATCH_OFF → currentMatch
+    uint64_t match = read_ptr(sc + MATCH_OFF);
+    if (match < 0x100000000ULL) { _localPlayer = 0; return NO; }
+
+    // currentMatch + LP_OFF → localPlayer
+    uint64_t lp = read_ptr(match + LP_OFF);
+    if (lp < 0x100000000ULL) { _localPlayer = 0; return NO; }
+
+    // Validate: player world pos must be non-zero and within bounds
+    float x = 0, z = 0;
+    safe_read(lp + PLAYER_POS_OFF,     &x, 4);
+    safe_read(lp + PLAYER_POS_OFF + 8, &z, 4);
+    if (x == 0.0f && z == 0.0f) { _localPlayer = 0; return NO; }
+    if (fabsf(x) > 200000.0f || fabsf(z) > 200000.0f) { _localPlayer = 0; return NO; }
+
+    _localPlayer = lp;
+    return YES;
+}
+
+- (void)detachFromGame {
+    _localPlayer = 0;
+    // Keep _baseAddress for reattach
+}
+
+- (BOOL)isGameRunning {
+    return _localPlayer != 0;
+}
+
+// ─── Accessors ───────────────────────────────────────────────────────────────
+- (uint64_t)baseAddress     { return _baseAddress; }
+- (uint64_t)localPlayer     { return _localPlayer; }
+- (mach_port_t)taskPort     { return _task; }
+- (void)setBaseAddress:(uint64_t)base { _baseAddress = base; }
+
+// ─── Read helpers ─────────────────────────────────────────────────────────────
+
+// Reads Vector3 at (localPlayer + offset)
 - (AOTVector3)readVector3AtOffset:(uint32_t)offset {
-    return [self readVector3AtAddress:_baseAddress + offset];
+    return [self readVector3AtAddress:_localPlayer + offset];
 }
 
 - (AOTVector3)readVector3AtAddress:(uint64_t)addr {
     AOTVector3 v = {0, 0, 0};
-    [self _read:addr into:&v size:sizeof(v)];
+    safe_read(addr, &v, sizeof(v));
     return v;
 }
 
-// ─── Pointer reads ───────────────────────────────────────────────────────────
 - (uint64_t)readPointerAtOffset:(uint32_t)offset {
-    return [self readPointerAtAddress:_baseAddress + offset];
+    return read_ptr(_baseAddress + offset);
 }
 
 - (uint64_t)readPointerAtAddress:(uint64_t)addr {
-    uint64_t v = 0;
-    [self _read:addr into:&v size:sizeof(v)];
-    return v;
+    return read_ptr(addr);
 }
 
-// ─── Scalar reads ────────────────────────────────────────────────────────────
 - (float)readFloatAtAddress:(uint64_t)addr {
     float v = 0;
-    [self _read:addr into:&v size:sizeof(v)];
+    safe_read(addr, &v, sizeof(v));
     return v;
 }
 
 - (uint32_t)readUint32AtAddress:(uint64_t)addr {
     uint32_t v = 0;
-    [self _read:addr into:&v size:sizeof(v)];
+    safe_read(addr, &v, sizeof(v));
     return v;
+}
+
+// ─── Write helpers (for aimbot) ───────────────────────────────────────────────
+- (void)writeFloat:(float)val atAddress:(uint64_t)addr {
+    if (addr < 0x100000000ULL) return;
+    @try { *(float *)(uintptr_t)addr = val; } @catch (...) {}
+}
+
+- (void)writeInt32:(int32_t)val atAddress:(uint64_t)addr {
+    if (addr < 0x100000000ULL) return;
+    @try { *(int32_t *)(uintptr_t)addr = val; } @catch (...) {}
 }
 
 @end
