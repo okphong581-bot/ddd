@@ -1,0 +1,6 @@
+*.deb
+*.tipa
+*.dylib
+packages/
+.build/
+.sdk/

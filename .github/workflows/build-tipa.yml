@@ -1,0 +1,42 @@
+name: Build TIPA for TrollStore
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-13
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Theos
+      run: |
+        sudo git clone --recursive https://github.com/theos/theos.git /opt/theos
+        sudo ln -s /opt/theos /theos
+        echo "THEOS=/opt/theos" >> $GITHUB_ENV
+
+    - name: Build .deb
+      run: |
+        export THEOS=/opt/theos
+        make package FINALPACKAGE=1
+
+    - name: Convert .deb to .tipa (TrollStore)
+      run: |
+        mkdir -p payload
+        dpkg-deb -x packages/*.deb payload/
+        cd payload
+        find . -name "*.dylib" -exec cp {} ../HoangHaAimbot.dylib \;
+        cd ..
+        mkdir -p HoangHaAimbot.app
+        cp HoangHaAimbot.dylib HoangHaAimbot.app/
+        echo "APPL" > HoangHaAimbot.app/PkgInfo
+        cp app/Info.plist HoangHaAimbot.app/
+        zip -r HoangHaAimbot.tipa HoangHaAimbot.app
+
+    - name: Upload TIPA artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: HoangHaAimbot-tipa
+        path: HoangHaAimbot.tipa
