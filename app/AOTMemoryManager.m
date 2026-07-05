@@ -24,17 +24,22 @@ static uint64_t find_il2cpp_base(void) {
         if (i == 0) {
             mainBase = (uint64_t)(uintptr_t)_dyld_get_image_header(i);
         }
-        if (name && (strcasestr(name, "libil2cpp") != NULL)) {
-            return (uint64_t)(uintptr_t)_dyld_get_image_header(i);
+        if (name) {
+            if (strcasestr(name, "libil2cpp") != NULL ||
+                strcasestr(name, "unityframework") != NULL ||
+                strcasestr(name, "ffios") != NULL ||
+                strcasestr(name, "freefire") != NULL) {
+                return (uint64_t)(uintptr_t)_dyld_get_image_header(i);
+            }
         }
     }
-    // If no separate il2cpp dylib, game is monolithic - use main binary
+    // If no match, use main binary
     return mainBase;
 }
 
 // ─── Safe in-process memcpy with guard ───────────────────────────────────────
 static BOOL safe_read(uint64_t addr, void *buf, size_t size) {
-    if (addr < 0x10000ULL || addr > 0x2000000000ULL) return NO;
+    if (addr < 0x10000ULL || addr > 0x1000000000000ULL) return NO;
     @try {
         memcpy(buf, (const void *)(uintptr_t)addr, size);
         return YES;
