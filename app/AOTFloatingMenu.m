@@ -18,7 +18,7 @@
         [self addSubview:renderer];
         
         // CADisplayLink for real-time update
-        CADisplayLink *link = [CADisplayLink displayLinkWithTarget:renderer selector:@selector(setNeedsDisplay)];
+        CADisplayLink *link = [CADisplayLink displayLinkWithTarget:self selector:@selector(updateOverlay)];
         [link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
         
         // Gesture recognizers
@@ -105,6 +105,39 @@
 
 - (void)renderSkeletonInContext:(CGContextRef)ctx {
     [renderer drawBonesInContext:ctx];
+}
+
+#pragma mark - UITableViewDataSource
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return 16;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    static NSString *cellId = @"BoneCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellId];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellId];
+        cell.backgroundColor = [UIColor clearColor];
+        cell.textLabel.textColor = [UIColor whiteColor];
+    }
+    NSArray *boneNames = @[@"Head", @"Neck", @"Hip", @"L-Shoulder", @"R-Shoulder", @"L-Elbow", @"R-Elbow", @"L-Wrist", @"R-Wrist", @"L-Hand", @"R-Hand", @"L-Ankle", @"R-Ankle", @"L-Foot", @"R-Foot", @"Root"];
+    if (indexPath.row < boneNames.count) {
+        cell.textLabel.text = boneNames[indexPath.row];
+    } else {
+        cell.textLabel.text = [NSString stringWithFormat:@"Bone %ld", (long)indexPath.row];
+    }
+    return cell;
+}
+
+- (void)updateOverlay {
+    if ([[AOTMemoryManager sharedManager] isGameRunning]) {
+        [boneManager updateBonePositions];
+        renderer.bonePoints = boneManager.bonePositions;
+    } else {
+        renderer.bonePoints = nil;
+    }
+    [renderer setNeedsDisplay];
 }
 
 @end
