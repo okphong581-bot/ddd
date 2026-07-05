@@ -13,7 +13,11 @@ static AOTFloatingMenu *floatingMenu = nil;
             floatingMenu.userInteractionEnabled = YES;
             floatingMenu.backgroundColor = [UIColor clearColor];
             floatingMenu.layer.zPosition = 99999;
-            UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
+            UIWindow *keyWindow = nil;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            keyWindow = [UIApplication sharedApplication].keyWindow;
+#pragma clang diagnostic pop
             if (keyWindow) {
                 [keyWindow addSubview:floatingMenu];
             }

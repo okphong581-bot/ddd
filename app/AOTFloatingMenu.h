@@ -2,6 +2,8 @@
 #import "AOTBoneManager.h"
 #import "AOTRenderer.h"
 
+@class AOTBone;
+
 @interface AOTFloatingMenu : UIView {
     UIButton *toggleButton;
     UITableView *boneTableView;

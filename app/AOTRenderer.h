@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 
+@class AOTBone;
+
 @interface AOTRenderer : UIView
 @property (nonatomic, strong) NSArray *bonePoints;
 @property (nonatomic, assign) AOTBone *selectedBone;
