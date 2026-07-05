@@ -34,7 +34,7 @@ static uint64_t find_il2cpp_base(void) {
 
 // ─── Safe in-process memcpy with guard ───────────────────────────────────────
 static BOOL safe_read(uint64_t addr, void *buf, size_t size) {
-    if (addr < 0x100000000ULL || addr > 0x800000000ULL) return NO;
+    if (addr < 0x10000ULL || addr > 0x2000000000ULL) return NO;
     @try {
         memcpy(buf, (const void *)(uintptr_t)addr, size);
         return YES;
@@ -76,26 +76,26 @@ static uint64_t read_ptr(uint64_t addr) {
 
     // Walk: base + INIT_BASE_OFF → initPtr
     uint64_t initPtr = read_ptr(_baseAddress + INIT_BASE_OFF);
-    if (initPtr < 0x100000000ULL) { _localPlayer = 0; return NO; }
+    if (initPtr < 0x10000ULL) { _localPlayer = 0; return NO; }
 
     // initPtr + SC_OFF → staticClass
     uint64_t sc = read_ptr(initPtr + SC_OFF);
-    if (sc < 0x100000000ULL) { _localPlayer = 0; return NO; }
+    if (sc < 0x10000ULL) { _localPlayer = 0; return NO; }
 
     // staticClass + MATCH_OFF → currentMatch
     uint64_t match = read_ptr(sc + MATCH_OFF);
-    if (match < 0x100000000ULL) { _localPlayer = 0; return NO; }
+    if (match < 0x10000ULL) { _localPlayer = 0; return NO; }
 
     // currentMatch + LP_OFF → localPlayer
     uint64_t lp = read_ptr(match + LP_OFF);
-    if (lp < 0x100000000ULL) { _localPlayer = 0; return NO; }
+    if (lp < 0x10000ULL) { _localPlayer = 0; return NO; }
 
     // Validate: player world pos must be non-zero and within bounds
     float x = 0, z = 0;
     safe_read(lp + PLAYER_POS_OFF,     &x, 4);
     safe_read(lp + PLAYER_POS_OFF + 8, &z, 4);
     if (x == 0.0f && z == 0.0f) { _localPlayer = 0; return NO; }
-    if (fabsf(x) > 200000.0f || fabsf(z) > 200000.0f) { _localPlayer = 0; return NO; }
+    if (fabsf(x) > 1000000.0f || fabsf(z) > 1000000.0f) { _localPlayer = 0; return NO; }
 
     _localPlayer = lp;
     return YES;
